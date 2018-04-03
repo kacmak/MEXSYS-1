@@ -1,0 +1,1345 @@
+---
+title: "MEXSYS"
+author: ""
+date: "February 2018"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Inputs: 
+Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm
+Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm
+Z:/PROMAN/Automated Data Downloads/awp.prc.loc.csv
+Z:/PROMAN/Automated Data Downloads/awp.sims.lagg.hist.csv
+Z:/PROMAN/Automated Data Downloads/awp.sims.lead.hist.csv
+Z:/PROMAN/Automated Data Downloads/awp.sims.cast.hist.csv
+Server=(localdb)\\MSSQLLocalDB;
+database=awtpcle
+
+Outputs:
+Z:/KCSubsite/LaggingDataMelt.csv
+Z:/KCSubsite/LeadingDataMelt.csv
+Z:/KCSubsite/CastingDataMelt.csv
+<!-- Z:/KCSubsite/cast.melt.csv -->
+<!-- Z:/KCSubsite/lagg.melt.csv -->
+<!-- Z:/KCSubsite/lead.melt.csv -->
+Z:/KCSubsite/lagg.melt.high.csv
+Z:/KCSubsite/lagg.melt.low.csv
+
+
+The first section is the SIMS pull and SHOULD NOT BE RUN UNLESS DIRECTED TO DO SO!
+
+The master SIMS file is in the CI library under Automated Data Downloads.
+
+```{r}
+
+
+library(officer)
+library(tidyr)
+library(tidyverse)
+library(reshape2)
+library(RColorBrewer)
+library(ggforce)
+library(latticeExtra)
+library(waterfall)
+library(plyr)
+library(ggplot2)
+library(ggthemes)
+library(openxlsx)
+library(sqldf)
+library(xlsx)
+
+
+
+#Cascadia 2018 Lagging
+#bring in all the Cle lines
+awtp.cle.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE Forging") 
+awtp.cle.1$Mfg_location_line <- "CLE Forging" 
+
+awtp.cle.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE HT") 
+awtp.cle.2$Mfg_location_line <- "CLE HT"
+
+awtp.cle.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE X Plant Forging") 
+awtp.cle.3$Mfg_location_line <- "CLE X Plant Forging"
+
+awtp.cle.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE Y Plant Forging") 
+awtp.cle.4$Mfg_location_line <- "CLE Y Plant Forging"
+
+awtp.cle.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE 8002 Forging") 
+awtp.cle.5$Mfg_location_line <- "CLE 8002 Forging"
+
+awtp.cle.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE 8003 Forging") 
+awtp.cle.6$Mfg_location_line <- "CLE 8003 Forging"
+
+awtp.cle.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE 8001 HT") 
+awtp.cle.7$Mfg_location_line <- "CLE 8001 HT"
+
+awtp.cle.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE 8002 HT") 
+awtp.cle.8$Mfg_location_line <- "CLE 8002 HT"
+
+awtp.cle.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "CLE 8003 HT") 
+awtp.cle.9$Mfg_location_line <- "CLE 8003 HT"
+
+#combine all cle into dataframe
+awtp.cle <- rbind.fill(awtp.cle.1, awtp.cle.2, awtp.cle.3, awtp.cle.4, awtp.cle.5, awtp.cle.6, awtp.cle.7, awtp.cle.8, awtp.cle.9)
+
+#Clear the workspace objects no longer needed
+rm(awtp.cle.1, awtp.cle.2, awtp.cle.3, awtp.cle.4, awtp.cle.5, awtp.cle.6, awtp.cle.7, awtp.cle.8, awtp.cle.9)
+
+
+#bring all BRB & BCC lines
+awtp.brb.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Machining") 
+awtp.brb.1$Mfg_location_line <- "BRB Machining" 
+
+awtp.brb.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 21") 
+awtp.brb.2$Mfg_location_line <- "BRB Line 21" 
+
+awtp.brb.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 23") 
+awtp.brb.3$Mfg_location_line <- "BRB Line 23"
+
+awtp.brb.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 31") 
+awtp.brb.4$Mfg_location_line <- "BRB Line 31"
+
+awtp.brb.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 32") 
+awtp.brb.5$Mfg_location_line <- "BRB Line 32"
+
+awtp.brb.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 33") 
+awtp.brb.6$Mfg_location_line <- "BRB Line 33"
+
+awtp.brb.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 34") 
+awtp.brb.7$Mfg_location_line <- "BRB Line 34"
+
+awtp.brb.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 35") 
+awtp.brb.8$Mfg_location_line <- "BRB Line 35"
+
+awtp.brb.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 37") 
+awtp.brb.9$Mfg_location_line <- "BRB Line 37"
+
+awtp.brb.10 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 42") 
+awtp.brb.10$Mfg_location_line <- "BRB Line 42"
+
+awtp.brb.11 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 43") 
+awtp.brb.11$Mfg_location_line <- "BRB Line 43"
+
+awtp.brb.12 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 44") 
+awtp.brb.12$Mfg_location_line <- "BRB Line 44"
+
+awtp.brb.13 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 45") 
+awtp.brb.13$Mfg_location_line <- "BRB Line 45"
+
+awtp.brb.14 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Line 46") 
+awtp.brb.14$Mfg_location_line <- "BRB Line 46"
+
+awtp.brb.15 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Finishing") 
+awtp.brb.15$Mfg_location_line <- "BRB Finishing"
+
+awtp.brb.16 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Dpt 54") 
+awtp.brb.16$Mfg_location_line <- "BRB Dpt 54"
+
+awtp.brb.17 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Megapolish 1") 
+awtp.brb.17$Mfg_location_line <- "BRB Megapolish 1"
+
+awtp.brb.18 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Megapolish 2") 
+awtp.brb.18$Mfg_location_line <- "BRB Megapolish 2"
+
+awtp.brb.19 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BRB Durabright") 
+awtp.brb.19$Mfg_location_line <- "BRB Durabright"
+
+awtp.brb.20 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "BCC Casthouse") 
+#awtp.brb.20 <- awtp.brb.20[,c(1:34)]
+awtp.brb.20$Mfg_location_line <- "BCC Casthouse"
+
+
+awtp.brb.all.cast. <- rbind.fill(awtp.brb.1, awtp.brb.2, awtp.brb.3, awtp.brb.4, awtp.brb.5, awtp.brb.6, awtp.brb.7, awtp.brb.8, awtp.brb.9, awtp.brb.10, awtp.brb.11, awtp.brb.12, awtp.brb.13, awtp.brb.14, awtp.brb.15, awtp.brb.16, awtp.brb.17, awtp.brb.18, awtp.brb.19, awtp.brb.20)
+
+#combine all brb & bcc into dataframe
+awtp.brb <- rbind.fill(awtp.brb.1, awtp.brb.2, awtp.brb.3, awtp.brb.4, awtp.brb.5, awtp.brb.6, awtp.brb.7, awtp.brb.8, awtp.brb.9, awtp.brb.10, awtp.brb.11, awtp.brb.12, awtp.brb.13, awtp.brb.14, awtp.brb.15, awtp.brb.16, awtp.brb.17, awtp.brb.18, awtp.brb.19, awtp.brb.20)
+
+#Clear the workspace objects no longer needed
+rm(awtp.brb.1, awtp.brb.2, awtp.brb.3, awtp.brb.4, awtp.brb.5, awtp.brb.6, awtp.brb.7, awtp.brb.8, awtp.brb.9, awtp.brb.10, awtp.brb.11, awtp.brb.12, awtp.brb.13, awtp.brb.14, awtp.brb.15, awtp.brb.16, awtp.brb.17, awtp.brb.18, awtp.brb.19, awtp.brb.20)
+
+
+##bring in all AWPJ lines
+awtp.awpj.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Machining") 
+awtp.awpj.1$Mfg_location_line <- "AWPJ Machining"
+
+awtp.awpj.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Line 1") 
+awtp.awpj.2$Mfg_location_line <- "AWPJ Line 1"
+
+awtp.awpj.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Line 2") 
+awtp.awpj.3$Mfg_location_line <- "AWPJ Line 2"
+
+awtp.awpj.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Line 3") 
+awtp.awpj.4$Mfg_location_line <- "AWPJ Line 3"
+
+awtp.awpj.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Finishing") 
+awtp.awpj.5$Mfg_location_line <- "AWPJ Finishing"
+
+awtp.awpj.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Brush") 
+awtp.awpj.6$Mfg_location_line <- "AWPJ Brush"
+
+awtp.awpj.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPJ Polish") 
+awtp.awpj.7$Mfg_location_line <- "AWPJ Polish"
+
+#combine all AWPJ into dataframe
+awtp.awpj <- rbind.fill(awtp.awpj.1, awtp.awpj.2, awtp.awpj.3, awtp.awpj.4, awtp.awpj.5, awtp.awpj.6, awtp.awpj.7)
+
+#Clear the workspace objects no longer needed
+rm(awtp.awpj.1, awtp.awpj.2, awtp.awpj.3, awtp.awpj.4, awtp.awpj.5, awtp.awpj.6, awtp.awpj.7)
+
+
+
+#bring in all AWPS lines
+awtp.awps.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPS Machining") 
+awtp.awps.1$Mfg_location_line <- "AWPS Machining"
+
+awtp.awps.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPS Line 1") 
+awtp.awps.2$Mfg_location_line <- "AWPS Line 1"
+
+awtp.awps.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPS Line 2") 
+awtp.awps.3$Mfg_location_line <- "AWPS Line 2"
+
+awtp.awps.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPS Finishing") 
+awtp.awps.4$Mfg_location_line <- "AWPS Finishing"
+
+awtp.awps.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPS Brush") 
+awtp.awps.5$Mfg_location_line <- "AWPS Brush"
+
+awtp.awps.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPS Polish") 
+awtp.awps.6$Mfg_location_line <- "AWPS Polish"
+
+# combine all AWPS into dataframe
+awtp.awps <- rbind.fill(awtp.awps.1, awtp.awps.2, awtp.awps.3, awtp.awps.4, awtp.awps.5, awtp.awps.6)
+
+# Clear the workspace objects no longer needed
+rm(awtp.awps.1, awtp.awps.2, awtp.awps.3, awtp.awps.4, awtp.awps.5, awtp.awps.6)
+
+
+# bring in all AWPE lines
+awtp.awpe.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Machining") 
+awtp.awpe.1$Mfg_location_line <- "AWPE Machining"
+
+awtp.awpe.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Forging") 
+awtp.awpe.2$Mfg_location_line <- "AWPE Forging"
+
+awtp.awpe.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Mini Line") 
+awtp.awpe.3$Mfg_location_line <- "AWPE Mini Line"
+
+awtp.awpe.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Conventional Main Line") 
+awtp.awpe.4$Mfg_location_line <- "AWPE Conventional Main Line"
+
+awtp.awpe.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Super Single Line") 
+awtp.awpe.5$Mfg_location_line <- "AWPE Super Single Line"
+
+awtp.awpe.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE IMT Line") 
+awtp.awpe.6$Mfg_location_line <- "AWPE IMT Line"
+
+awtp.awpe.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE CD Line") 
+awtp.awpe.7$Mfg_location_line <- "AWPE CD Line"
+
+awtp.awpe.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE CD Megaline") 
+awtp.awpe.8$Mfg_location_line <- "AWPE CD Megaline"
+
+awtp.awpe.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE ULW Line") 
+awtp.awpe.9$Mfg_location_line <- "AWPE ULW Line"
+
+awtp.awpe.10 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Finishing") 
+awtp.awpe.10$Mfg_location_line <- "AWPE Finishing"
+
+awtp.awpe.11 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE AB Polish") 
+awtp.awpe.11$Mfg_location_line <- "AWPE AB Polish"
+
+awtp.awpe.12 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE AB Satin") 
+awtp.awpe.12$Mfg_location_line <- "AWPE AB Satin"
+
+awtp.awpe.13 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE CD Polish") 
+awtp.awpe.13$Mfg_location_line <- "AWPE CD Polish"
+
+awtp.awpe.14 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE CD Satin") 
+awtp.awpe.14$Mfg_location_line <- "AWPE CD Satin"
+
+awtp.awpe.15 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE DB2 Polish") 
+awtp.awpe.15$Mfg_location_line <- "AWPE DB2 Polish"
+
+awtp.awpe.16 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE Durabright") 
+awtp.awpe.16$Mfg_location_line <- "AWPE Durabright"
+
+awtp.awpe.17 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE DB Line 1") 
+awtp.awpe.17$Mfg_location_line <- "AWPE DB Line 1"
+
+awtp.awpe.18 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPE DB Line 2") 
+awtp.awpe.18$Mfg_location_line <- "AWPE DB Line 2"
+
+# combine all brb & bcc into dataframe
+awtp.awpe <- rbind.fill(awtp.awpe.1, awtp.awpe.2, awtp.awpe.3, awtp.awpe.4, awtp.awpe.5, awtp.awpe.6, awtp.awpe.7, awtp.awpe.8, awtp.awpe.9, awtp.awpe.10, awtp.awpe.11, awtp.awpe.12, awtp.awpe.13, awtp.awpe.14, awtp.awpe.15, awtp.awpe.16, awtp.awpe.17, awtp.awpe.18)
+
+# Clear the workspace objects no longer needed
+rm(awtp.awpe.1, awtp.awpe.2, awtp.awpe.3, awtp.awpe.4, awtp.awpe.5, awtp.awpe.6, awtp.awpe.7, awtp.awpe.8, awtp.awpe.9, awtp.awpe.10, awtp.awpe.11, awtp.awpe.12, awtp.awpe.13, awtp.awpe.14, awtp.awpe.15, awtp.awpe.16, awtp.awpe.17, awtp.awpe.18)
+
+
+# bring in all AWPM lines
+awtp.awpm.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Casthouse") 
+#awtp.awpm.1 <- awtp.awpm.1[,c(1:34)]
+awtp.awpm.1$Mfg_location_line <- "AWPM Casthouse"
+
+awtp.awpm.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Machining") 
+awtp.awpm.2$Mfg_location_line <- "AWPM Machining"
+
+awtp.awpm.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Forging") 
+awtp.awpm.3$Mfg_location_line <- "AWPM Forging"
+
+awtp.awpm.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 1") 
+awtp.awpm.4$Mfg_location_line <- "AWPM Line 1"
+
+awtp.awpm.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 2") 
+awtp.awpm.5$Mfg_location_line <- "AWPM Line 2"
+
+awtp.awpm.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 3") 
+awtp.awpm.6$Mfg_location_line <- "AWPM Line 3"
+
+awtp.awpm.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 4") 
+awtp.awpm.7$Mfg_location_line <- "AWPM Line 4"
+
+awtp.awpm.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 5") 
+awtp.awpm.8$Mfg_location_line <- "AWPM Line 5"
+
+awtp.awpm.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 6") 
+awtp.awpm.9$Mfg_location_line <- "AWPM Line 6"
+
+awtp.awpm.10 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 7") 
+awtp.awpm.10$Mfg_location_line <- "AWPM Line 7"
+
+awtp.awpm.11 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Line 8") 
+awtp.awpm.11$Mfg_location_line <- "AWPM Line 8"
+
+awtp.awpm.12 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Finishing") 
+awtp.awpm.12$Mfg_location_line <- "AWPM Finishing"
+
+awtp.awpm.13 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Cell A") 
+awtp.awpm.13$Mfg_location_line <- "AWPM Cell A"
+
+awtp.awpm.14 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Cell B") 
+awtp.awpm.14$Mfg_location_line <- "AWPM Cell B"
+
+awtp.awpm.15 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Cell C") 
+awtp.awpm.15$Mfg_location_line <- "AWPM Cell C"
+
+awtp.awpm.16 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Mega Polish 1") 
+awtp.awpm.16$Mfg_location_line <- "AWPM Mega Polish 1"
+
+awtp.awpm.17 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Mega Polish 2") 
+awtp.awpm.17$Mfg_location_line <- "AWPM Mega Polish 2"
+
+awtp.awpm.18 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWPM Durabright") 
+awtp.awpm.18$Mfg_location_line <- "AWPM Durabright"
+
+
+# 
+awtp.awtp.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWTP Casthouse") 
+awtp.awtp.1$Mfg_location_line <- "AWTP Casthouse"
+
+awtp.awtp.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWTP Forging") 
+awtp.awtp.2$Mfg_location_line <- "AWTP Forging"
+
+awtp.awtp.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWTP Machining") 
+awtp.awtp.3$Mfg_location_line <- "AWTP Machining"
+
+awtp.awtp.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWTP Finishing") 
+awtp.awtp.4$Mfg_location_line <- "AWTP Finishing"
+
+awtp.awtp.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Lagging.xlsm", sheet = "AWTP Durabright") 
+awtp.awtp.5$Mfg_location_line <- "AWTP Durabright"
+
+
+# combine all AWPM into dataframe
+awtp.awpm <- rbind.fill(awtp.awpm.1, awtp.awpm.2, awtp.awpm.3, awtp.awpm.4, awtp.awpm.5, awtp.awpm.6, awtp.awpm.7, awtp.awpm.8, awtp.awpm.9, awtp.awpm.10, awtp.awpm.11, awtp.awpm.12, awtp.awpm.13, awtp.awpm.14, awtp.awpm.15, awtp.awpm.16, awtp.awpm.17, awtp.awpm.18, awtp.awtp.1, awtp.awtp.2, awtp.awtp.3, awtp.awtp.4, awtp.awtp.5)
+
+# Clear the workspace objects no longer needed
+rm(awtp.awpm.1, awtp.awpm.2, awtp.awpm.3, awtp.awpm.4, awtp.awpm.5, awtp.awpm.6, awtp.awpm.7, awtp.awpm.8, awtp.awpm.9, awtp.awpm.10, awtp.awpm.11, awtp.awpm.12, awtp.awpm.13, awtp.awpm.14, awtp.awpm.15, awtp.awpm.16, awtp.awpm.17, awtp.awpm.18, awtp.awtp.1, awtp.awtp.2, awtp.awtp.3, awtp.awtp.4, awtp.awtp.5)
+
+
+# now combine all dem leftover dataframes into a monsterframe
+awtp.lag.2018 <- rbind.fill(awtp.awpe, awtp.brb, awtp.awpj, awtp.awps, awtp.awpm, awtp.cle )
+
+#Clear the workspace objects no longer needed
+rm(awtp.awpe, awtp.brb, awtp.awpj, awtp.awps, awtp.awpm, awtp.cle)
+
+#add year label
+awtp.lag.2018$year <- "2018"
+
+###############################################################################################
+
+##Change the case to lower of the columns..
+
+names(awtp.lag.2018) <- tolower(names(awtp.lag.2018))
+
+#write.csv(awtp.lag.2018, "Z:/PROMAN/Automated Data Downloads/awtp.lag.2018.csv")
+
+####################################################################################################
+
+#Cascadia 2018 Leading
+
+awtp.cle.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE Forging") 
+awtp.cle.1$Mfg_location_line <- "CLE Forging" 
+
+awtp.cle.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE Heat Treat") 
+awtp.cle.2$Mfg_location_line <- "CLE HT"
+
+awtp.cle.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE X Plant Forging") 
+awtp.cle.3$Mfg_location_line <- "CLE X Plant Forging"
+
+awtp.cle.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE Y Plant Forging") 
+awtp.cle.4$Mfg_location_line <- "CLE Y Plant Forging"
+
+awtp.cle.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE 8002 Forging") 
+awtp.cle.5$Mfg_location_line <- "CLE 8002 Forging"
+
+awtp.cle.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE 8003 Forging") 
+awtp.cle.6$Mfg_location_line <- "CLE 8003 Forging"
+
+#awtp.cle.7 <-  readWorkbook("Z:/Waterfall1/2018/CLE/AWTP - 2018 Cascadia Leading.xlsx", sheet = "CLE 8001 HT") 
+#awtp.cle.7$Mfg_location_line <- "CLE 8001 HT"
+
+awtp.cle.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE 8002 HT") 
+awtp.cle.8$Mfg_location_line <- "CLE 8002 HT"
+
+awtp.cle.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "CLE 8003 HT") 
+awtp.cle.9$Mfg_location_line <- "CLE 8003 HT"
+
+#combine all cle into dataframe
+awtp.cle <- rbind.fill(awtp.cle.1, awtp.cle.2, awtp.cle.3, awtp.cle.4, awtp.cle.5, awtp.cle.6, awtp.cle.8, awtp.cle.9)
+
+#Clear the workspace objects no longer needed
+rm(awtp.cle.1, awtp.cle.2, awtp.cle.3, awtp.cle.4, awtp.cle.5, awtp.cle.6, awtp.cle.8, awtp.cle.9)
+
+
+#bring in all BRB & BCC lines
+awtp.brb.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Machining") 
+awtp.brb.1$Mfg_location_line <- "BRB Machining" 
+
+awtp.brb.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 21") 
+awtp.brb.2$Mfg_location_line <- "BRB Line 21" 
+
+awtp.brb.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 23") 
+awtp.brb.3$Mfg_location_line <- "BRB Line 23"
+
+awtp.brb.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 31") 
+awtp.brb.4$Mfg_location_line <- "BRB Line 31"
+
+awtp.brb.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 32") 
+awtp.brb.5$Mfg_location_line <- "BRB Line 32"
+
+awtp.brb.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 33") 
+awtp.brb.6$Mfg_location_line <- "BRB Line 33"
+
+awtp.brb.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 34") 
+awtp.brb.7$Mfg_location_line <- "BRB Line 34"
+
+awtp.brb.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 35") 
+awtp.brb.8$Mfg_location_line <- "BRB Line 35"
+
+awtp.brb.9 <-  readWorkbook("Z:/Waterfall1/2018//AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 37") 
+awtp.brb.9$Mfg_location_line <- "BRB Line 37"
+
+awtp.brb.10 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 42") 
+awtp.brb.10$Mfg_location_line <- "BRB Line 42"
+
+awtp.brb.11 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 43") 
+awtp.brb.11$Mfg_location_line <- "BRB Line 43"
+
+awtp.brb.12 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 44") 
+awtp.brb.12$Mfg_location_line <- "BRB Line 44"
+
+awtp.brb.13 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 45") 
+awtp.brb.13$Mfg_location_line <- "BRB Line 45"
+
+awtp.brb.14 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Line 46") 
+awtp.brb.14$Mfg_location_line <- "BRB Line 46"
+
+awtp.brb.15 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Finishing") 
+awtp.brb.15$Mfg_location_line <- "BRB Finishing"
+
+awtp.brb.16 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Dpt 54") 
+awtp.brb.16$Mfg_location_line <- "BRB Dpt 54"
+
+awtp.brb.17 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Megapolish 1") 
+awtp.brb.17$Mfg_location_line <- "BRB Megapolish 1"
+
+awtp.brb.18 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Megapolish 2") 
+awtp.brb.18$Mfg_location_line <- "BRB Megapolish 2"
+
+awtp.brb.19 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BRB Durabright") 
+awtp.brb.19$Mfg_location_line <- "BRB Durabright"
+
+awtp.brb.20 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "BCC Casthouse") 
+awtp.brb.20$Mfg_location_line <- "BCC Casthouse"
+
+#combine all brb & bcc into dataframe
+awtp.brb <- rbind.fill(awtp.brb.1, awtp.brb.2, awtp.brb.3, awtp.brb.4, awtp.brb.5, awtp.brb.6, awtp.brb.7, awtp.brb.8, awtp.brb.9, awtp.brb.10, awtp.brb.11, awtp.brb.12, awtp.brb.13, awtp.brb.14, awtp.brb.15, awtp.brb.16, awtp.brb.17, awtp.brb.18, awtp.brb.19, awtp.brb.20)
+
+#Clear the workspace objects no longer needed
+rm(awtp.brb.1, awtp.brb.2, awtp.brb.3, awtp.brb.4, awtp.brb.5, awtp.brb.6, awtp.brb.7, awtp.brb.8, awtp.brb.9, awtp.brb.10, awtp.brb.11, awtp.brb.12, awtp.brb.13, awtp.brb.14, awtp.brb.15, awtp.brb.16, awtp.brb.17, awtp.brb.18, awtp.brb.19, awtp.brb.20)
+
+
+#bring in all AWPJ lines
+awtp.awpj.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Machining") 
+awtp.awpj.1$Mfg_location_line <- "AWPJ Machining"
+
+awtp.awpj.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Line 1") 
+awtp.awpj.2$Mfg_location_line <- "AWPJ Line 1"
+
+awtp.awpj.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Line 2") 
+awtp.awpj.3$Mfg_location_line <- "AWPJ Line 2"
+
+awtp.awpj.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Line 3") 
+awtp.awpj.4$Mfg_location_line <- "AWPJ Line 3"
+
+awtp.awpj.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Finishing") 
+awtp.awpj.5$Mfg_location_line <- "AWPJ Finishing"
+
+awtp.awpj.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Brush") 
+awtp.awpj.6$Mfg_location_line <- "AWPJ Brush"
+
+awtp.awpj.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPJ Polish") 
+awtp.awpj.7$Mfg_location_line <- "AWPJ Polish"
+
+#combine all AWPJ into dataframe
+awtp.awpj <- rbind.fill(awtp.awpj.1, awtp.awpj.2, awtp.awpj.3, awtp.awpj.4, awtp.awpj.5, awtp.awpj.6, awtp.awpj.7)
+
+#Clear the workspace objects no longer needed
+rm(awtp.awpj.1, awtp.awpj.2, awtp.awpj.3, awtp.awpj.4, awtp.awpj.5, awtp.awpj.6, awtp.awpj.7)
+
+
+#bring in all AWPS lines
+awtp.awps.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPS Machining") 
+awtp.awps.1$Mfg_location_line <- "AWPS Machining"
+
+awtp.awps.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPS Line 1") 
+awtp.awps.2$Mfg_location_line <- "AWPS Line 1"
+
+awtp.awps.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPS Line 2") 
+awtp.awps.3$Mfg_location_line <- "AWPS Line 2"
+
+awtp.awps.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPS Finishing") 
+awtp.awps.4$Mfg_location_line <- "AWPS Finishing"
+
+awtp.awps.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPS Brush") 
+awtp.awps.5$Mfg_location_line <- "AWPS Brush"
+
+awtp.awps.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPS Polish") 
+awtp.awps.6$Mfg_location_line <- "AWPS Polish"
+
+#combine all AWPS into dataframe
+awtp.awps <- rbind.fill(awtp.awps.1, awtp.awps.2, awtp.awps.3, awtp.awps.4, awtp.awps.5, awtp.awps.6)
+
+#Clear the workspace objects no longer needed
+rm(awtp.awps.1, awtp.awps.2, awtp.awps.3, awtp.awps.4, awtp.awps.5, awtp.awps.6)
+
+
+#bring in all AWPE lines
+awtp.awpe.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Machining") 
+awtp.awpe.1$Mfg_location_line <- "AWPE Machining"
+
+awtp.awpe.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Forging") 
+awtp.awpe.2$Mfg_location_line <- "AWPE Forging"
+
+awtp.awpe.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Mini Line") 
+awtp.awpe.3$Mfg_location_line <- "AWPE Mini Line"
+
+awtp.awpe.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Conventional Main Line") 
+awtp.awpe.4$Mfg_location_line <- "AWPE Conventional Main Line"
+
+awtp.awpe.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Super Single Line") 
+awtp.awpe.5$Mfg_location_line <- "AWPE Super Single Line"
+
+awtp.awpe.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE IMT Line") 
+awtp.awpe.6$Mfg_location_line <- "AWPE IMT Line"
+
+awtp.awpe.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE CD Line") 
+awtp.awpe.7$Mfg_location_line <- "AWPE CD Line"
+
+awtp.awpe.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE CD Megaline") 
+awtp.awpe.8$Mfg_location_line <- "AWPE CD Megaline"
+
+awtp.awpe.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE ULW Line") 
+awtp.awpe.9$Mfg_location_line <- "AWPE ULW Line"
+
+awtp.awpe.10 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Finishing") 
+awtp.awpe.10$Mfg_location_line <- "AWPE Finishing"
+
+awtp.awpe.11 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE AB Polish") 
+awtp.awpe.11$Mfg_location_line <- "AWPE AB Polish"
+
+awtp.awpe.12 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE AB Satin") 
+awtp.awpe.12$Mfg_location_line <- "AWPE AB Satin"
+
+awtp.awpe.13 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE CD Polish") 
+awtp.awpe.13$Mfg_location_line <- "AWPE CD Polish"
+
+awtp.awpe.14 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE CD Satin") 
+awtp.awpe.14$Mfg_location_line <- "AWPE CD Satin"
+
+awtp.awpe.15 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE DB2 Polish") 
+awtp.awpe.15$Mfg_location_line <- "AWPE DB2 Polish"
+
+awtp.awpe.16 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE Durabright") 
+awtp.awpe.16$Mfg_location_line <- "AWPE Durabright"
+
+awtp.awpe.17 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE DB Line 1") 
+awtp.awpe.17$Mfg_location_line <- "AWPE DB Line 1"
+
+awtp.awpe.18 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPE DB Line 2") 
+awtp.awpe.18$Mfg_location_line <- "AWPE DB Line 2"
+
+#combine all brb & bcc into dataframe
+awtp.awpe <- rbind.fill(awtp.awpe.1, awtp.awpe.2, awtp.awpe.3, awtp.awpe.4, awtp.awpe.5, awtp.awpe.6, awtp.awpe.7, awtp.awpe.8, awtp.awpe.9, awtp.awpe.10, awtp.awpe.11, awtp.awpe.12, awtp.awpe.13, awtp.awpe.14, awtp.awpe.15, awtp.awpe.16, awtp.awpe.17, awtp.awpe.18)
+
+#Clear the workspace objects no longer needed
+rm(awtp.awpe.1, awtp.awpe.2, awtp.awpe.3, awtp.awpe.4, awtp.awpe.5, awtp.awpe.6, awtp.awpe.7, awtp.awpe.8, awtp.awpe.9, awtp.awpe.10, awtp.awpe.11, awtp.awpe.12, awtp.awpe.13, awtp.awpe.14, awtp.awpe.15, awtp.awpe.16, awtp.awpe.17, awtp.awpe.18)
+
+
+#bring in all AWPM lines
+awtp.awpm.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Casthouse") 
+awtp.awpm.1$Mfg_location_line <- "AWPM Casthouse"
+
+awtp.awpm.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Machining") 
+awtp.awpm.2$Mfg_location_line <- "AWPM Machining"
+
+awtp.awpm.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Forging") 
+awtp.awpm.3$Mfg_location_line <- "AWPM Forging"
+
+awtp.awpm.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 1") 
+awtp.awpm.4$Mfg_location_line <- "AWPM Line 1"
+
+awtp.awpm.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 2") 
+awtp.awpm.5$Mfg_location_line <- "AWPM Line 2"
+
+awtp.awpm.6 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 3") 
+awtp.awpm.6$Mfg_location_line <- "AWPM Line 3"
+
+awtp.awpm.7 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 4") 
+awtp.awpm.7$Mfg_location_line <- "AWPM Line 4"
+
+awtp.awpm.8 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 5") 
+awtp.awpm.8$Mfg_location_line <- "AWPM Line 5"
+
+awtp.awpm.9 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 6") 
+awtp.awpm.9$Mfg_location_line <- "AWPM Line 6"
+
+awtp.awpm.10 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 7") 
+awtp.awpm.10$Mfg_location_line <- "AWPM Line 7"
+
+awtp.awpm.11 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Line 8") 
+awtp.awpm.11$Mfg_location_line <- "AWPM Line 8"
+
+awtp.awpm.12 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Finishing") 
+awtp.awpm.12$Mfg_location_line <- "AWPM Finishing"
+
+awtp.awpm.13 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Cell A") 
+awtp.awpm.13$Mfg_location_line <- "AWPM Cell A"
+
+awtp.awpm.14 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Cell B") 
+awtp.awpm.14$Mfg_location_line <- "AWPM Cell B"
+
+awtp.awpm.15 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Cell C") 
+awtp.awpm.15$Mfg_location_line <- "AWPM Cell C"
+
+awtp.awpm.16 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Mega Polish 1") 
+awtp.awpm.16$Mfg_location_line <- "AWPM Mega Polish 1"
+
+awtp.awpm.17 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Mega Polish 2") 
+awtp.awpm.17$Mfg_location_line <- "AWPM Mega Polish 2"
+
+awtp.awpm.18 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWPM Durabright") 
+awtp.awpm.18$Mfg_location_line <- "AWPM Durabright"
+
+
+#bring in all AWPS lines
+awtp.awtp.1 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWTP Casthouse") 
+awtp.awtp.1$Mfg_location_line <- "AWTP Casthouse"
+
+awtp.awtp.2 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWTP Forging") 
+awtp.awtp.2$Mfg_location_line <- "AWTP Forging"
+
+awtp.awtp.3 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWTP Machining") 
+awtp.awtp.3$Mfg_location_line <- "AWTP Machining"
+
+awtp.awtp.4 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWTP Finishing") 
+awtp.awtp.4$Mfg_location_line <- "AWTP Finishing"
+
+awtp.awtp.5 <-  readWorkbook("Z:/Waterfall1/2018/AWTP - 2018 Cascadia Leading.xlsm", sheet = "AWTP Durabright") 
+awtp.awtp.5$Mfg_location_line <- "AWTP Durabright"
+
+# combine all AWPM into dataframe
+awtp.awpm <- rbind.fill(awtp.awpm.1, awtp.awpm.2, awtp.awpm.3, awtp.awpm.4, awtp.awpm.5, awtp.awpm.6, awtp.awpm.7, awtp.awpm.8, awtp.awpm.9, awtp.awpm.10, awtp.awpm.11, awtp.awpm.12, awtp.awpm.13, awtp.awpm.14, awtp.awpm.15, awtp.awpm.16, awtp.awpm.17, awtp.awpm.18, awtp.awtp.1, awtp.awtp.2, awtp.awtp.3, awtp.awtp.4, awtp.awtp.5)
+
+# Clear the workspace objects no longer needed
+rm(awtp.awpm.1, awtp.awpm.2, awtp.awpm.3, awtp.awpm.4, awtp.awpm.5, awtp.awpm.6, awtp.awpm.7, awtp.awpm.8, awtp.awpm.9, awtp.awpm.10, awtp.awpm.11, awtp.awpm.12, awtp.awpm.13, awtp.awpm.14, awtp.awpm.15, awtp.awpm.16, awtp.awpm.17, awtp.awpm.18, awtp.awtp.1, awtp.awtp.2, awtp.awtp.3, awtp.awtp.4, awtp.awtp.5)
+
+# now combine all dem leftover dataframes into a monsterframe
+awtp.lead.2018 <- rbind.fill(awtp.awpe, awtp.brb, awtp.awpj, awtp.awps, awtp.awpm, awtp.cle )
+
+#Clear the workspace objects no longer needed
+rm(awtp.awpe, awtp.brb, awtp.awpj, awtp.awps, awtp.awpm, awtp.cle)
+
+#add year label
+awtp.lead.2018$year <- "2018"
+
+names(awtp.lead.2018) <- tolower(names(awtp.lead.2018))
+
+#write.csv(awtp.lead.2018, file = "Z:/PROMAN/Automated Data Downloads/awtp.lead.2018.csv")
+
+
+
+
+
+```
+ 
+ 
+ 
+```{r}
+
+# Begin processing data for SIMS output
+# remove .'s and _'s from column names
+names(awtp.lead.2018) <- gsub("\\.", "", names(awtp.lead.2018))
+names(awtp.lag.2018) <- gsub("\\.", "", names(awtp.lag.2018))
+
+#pull in process/location cross reference
+process_loc <- read.csv("Z:/PROMAN/Automated Data Downloads/awp.prc.loc.csv")
+
+# create a new column  
+# DO I STILL USE THIS????
+process_loc$location_process <- paste(process_loc$location, process_loc$process, sep = " ")
+
+names(process_loc) <- tolower(names(process_loc))
+
+# dd location data to 2018 lag data
+awtp.lag.sims <-  merge(x = awtp.lag.2018, y = process_loc, by = "mfg_location_line", all.x = TRUE)
+
+# add location data to 2018 lead data
+awtp.lead.sims <-  merge(x = awtp.lead.2018, y = process_loc, by = "mfg_location_line", all.x = TRUE)
+
+# merge the two files
+awtp.2018.sims <-  merge(x = awtp.lag.sims, y = awtp.lead.sims, by = c("mfg_location_line", "data"))
+
+#set NA to 0
+awtp.2018.sims[is.na(as.matrix(awtp.2018.sims))] <- 0
+
+# is this redundant???
+names(awtp.2018.sims) <- gsub("\\.", "", names(awtp.2018.sims))
+names(awtp.2018.sims) <- gsub("\\_", "", names(awtp.2018.sims))
+
+# make the data column charactr so you can change it (in case it gets pulled in as a factor)
+awtp.2018.sims$data <- as.character(awtp.2018.sims$data)
+
+awtp.2018.sims$data[awtp.2018.sims$data == "Feb-18"] <- "2018-02"
+awtp.2018.sims$data[awtp.2018.sims$data == "Jan-18"] <- "2018-01"
+awtp.2018.sims$data[awtp.2018.sims$data == "Mar-18"] <- "2018-03"
+awtp.2018.sims$data[awtp.2018.sims$data == "Apr-18"] <- "2018-04"
+awtp.2018.sims$data[awtp.2018.sims$data == "May-18"] <- "2018-05"
+awtp.2018.sims$data[awtp.2018.sims$data == "Jun-18"] <- "2018-06"
+awtp.2018.sims$data[awtp.2018.sims$data == "Jul-18"] <- "2018-07"
+awtp.2018.sims$data[awtp.2018.sims$data == "Aug-18"] <- "2018-08"
+awtp.2018.sims$data[awtp.2018.sims$data == "Sep-18"] <- "2018-09"
+awtp.2018.sims$data[awtp.2018.sims$data == "Oct-18"] <- "2018-10"
+awtp.2018.sims$data[awtp.2018.sims$data == "Nov-18"] <- "2018-11"
+awtp.2018.sims$data[awtp.2018.sims$data == "Dec-18"] <- "2018-12"
+
+
+# change percent data to < 1
+awtp.2018.sims$`5sscore%`[awtp.2018.sims$`5sscore%` > 1] <- (awtp.2018.sims$`5sscore%`[awtp.2018.sims$`5sscore%` > 1]) / 100 
+awtp.2018.sims$`dmaudit%`[awtp.2018.sims$`dmaudit%` > 1] <- (awtp.2018.sims$`dmaudit%`[awtp.2018.sims$`dmaudit%` > 1]) / 100 
+awtp.2018.sims$`recovery%`[awtp.2018.sims$`recovery%` >= 1] <- (awtp.2018.sims$`recovery%`[awtp.2018.sims$`recovery%` >= 1]) / 100 
+awtp.2018.sims$scrap[awtp.2018.sims$scrap >= 1] <- (awtp.2018.sims$scrap[awtp.2018.sims$scrap >= 1]) / 100 
+
+# kacmak -this was changed and is included in MEXSYS - 1.1.Rmd
+awtp.2018.sims$netmeltloss[awtp.2018.sims$netmeltloss >= 1] <- (awtp.2018.sims$netmeltloss[awtp.2018.sims$netmeltloss >= 1]) / 100 
+
+
+# change locationx & processx to charcter so you can change them...
+awtp.2018.sims$locationx <- as.character(awtp.2018.sims$locationx)
+awtp.2018.sims$processx <- as.character(awtp.2018.sims$processx)
+awtp.2018.sims$locationx[awtp.2018.sims$locationx == "AWPM" & awtp.2018.sims$processx == "Casting"] <- "MCC"
+
+
+tbl_lag <- sqldf("SELECT [locationx] as Mfg_Location
+                  ,'Actual' as Plan_Type
+                  ,'2018' as line_year
+              	  ,[data] as report_month
+              	  ,[processx] as process_type
+              	  ,[goodoutput] as prod_units
+              	  ,[goodoutput] as good_prod_units
+              	  ,[internalscrapquantity] as scrap_units
+              	  ,[sourcescrapquantity] as scrap_units_src
+              	  ,[internalreworkquantity] as rework_units
+                  ,[sourcereworkquantity] as rework_units_src
+              	  ,[totalscheduletime] as total_time
+              	  ,[runtime] as run_time
+              	  ,[effectiveruntime] as eff_run_time
+              	  ,[totalfph] as full_prod_hrs
+                  ,[totalcalendartime] as calendar_time
+              	  , 1 as process_lines
+                  , 1 as process_lines_avg
+                  ,[mixadjustedcycletime] as M_A_Cycle_Time_avg
+                  ,[scrap] as scrap_pct_avg
+                  ,[rework] as rework_pct_avg
+                  ,[qr] as quality_rate_avg
+                  ,[oa] as oa_avg
+                  ,[pe] as perf_rate_avg
+                  ,[oee] as oee_avg
+                  ,[au] as asset_utilization_avg
+                  ,[au] as asset_utilization_weight
+                  from [awtp.2018.sims]
+              where [data] in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+              and [reportgroupy] in ('process')")
+
+
+tbl_lead <- sqldf("SELECT [locationx] as Mfg_Location
+                    ,'Actual' as Plan_Type
+                    ,'2018' as line_year
+              	    ,[data] as report_month
+              	    ,[processx] as process_type
+                    ,[#ofrecognitions] as people_recognized
+                    ,[#ofsuggestions] as suggestions_submitted
+                    ,[#ofa3sopened] as prob_a3_opened
+                    ,[#ofa3scompleted] as prob_a3_completed
+                    ,[#ofa3s&gt;30days] as prob_a3_over_30
+              	    ,0 as 'events'
+                    ,[5sscore%] as five_s_audit
+              		  ,0 as critical_equip
+              		  ,0 as crit_equip_in_tpm
+              		  ,0 as proc_mgmt_review
+              	  	,0 as recipe_audits
+              	  	,0 as recipe_misses
+                    ,[dmaudit%] as dm_audit_score
+              	  	,0 as expected_pm_time
+              		  ,[plannedmaintenancetime] as total_pm_time
+                    ,[plannedpmworkorders] as expected_pm_orders
+                    ,[actualpmworkorders] as total_pm_orders
+                    ,[repaircount] as repair_count
+                    ,[mttr(avgrepairtime-minutes)] as mttr_avg_time
+                    from [awtp.2018.sims]
+                    where [data] in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+                   and [reportgroupy] in ('process')")
+
+
+
+
+tbl_cast <- sqldf("select [locationx] as Mfg_Location
+                    ,'Actual' as Plan_Type
+                    ,'2018' as line_year
+              	    ,[data] as report_month
+              	    ,[processx] as process_type
+                		,[goodoutput]	as	prod_weight
+                		,[internalscrapquantity]	as	planned_scrap_weight
+                		,[sourcescrapquantity]	as	unplanned_scrap_weight
+                		,0	as	charge_weight_solid
+                		,0	as	charge_weight_rsi
+                		,0	as	charge_weight_chip
+                		,0	as	dross_weight
+                		,0	as	good_weight_shipped
+                		,0	as	dross_after_recovery
+                		,[totalscheduletime]	as	total_time
+                		,[runtime]	as	run_time
+                		,[effectiveruntime]	as	eff_run_time
+                		,[totalfph]	as	full_prod_hours
+                		,[totalcalendartime]	as	calendar_time
+                		,1	as	process_lines
+                		,0	as	Direct_LH_Unit
+                		,0	as	total_charge_wt
+                		,0	as	gas_gj
+                		,0	as	electricity_gj
+                		,[qr]	as	quality_rate_avg
+                		,[oa]	as	oa_avg
+                		,[pe]	as	perf_rate_avg
+                		,[oee]	as	oee_avg
+                		,[au]	as	asset_utilization_avg
+                		,[au]	as	asset_utilization_weight
+                		,[scrap]	as	scrap_pct_avg
+                		,[recovery%]	as	recovery_pct_avg
+                		,[laborhourspermetricton]	as	lh_mt_avg
+                		,[energypermetricton]	as	gj_mt_avg
+                		,[netmeltloss]	as	net_melt_loss_avg
+                    from    [awtp.2018.sims]
+                    where [processx] in ('Casting')
+                      and [data] in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+                   and [reportgroupy] in ('process')")
+
+
+#change names to lower case
+names(tbl_lag) <- tolower(names(tbl_lag))
+names(tbl_lead) <- tolower(names(tbl_lead))
+names(tbl_cast) <- tolower(names(tbl_cast))
+
+# read in the history to append to curent year
+awp.sims.lagg.hist <- read.csv("Z:/PROMAN/Automated Data Downloads/awp.sims.lagg.hist.csv")
+awp.sims.lead.hist <- read.csv("Z:/PROMAN/Automated Data Downloads/awp.sims.lead.hist.csv")
+awp.sims.cast.hist <- read.csv("Z:/PROMAN/Automated Data Downloads/awp.sims.cast.hist.csv")
+
+#change names to lower case
+names(awp.sims.lagg.hist) <- tolower(names(awp.sims.lagg.hist))
+names(awp.sims.lead.hist) <- tolower(names(awp.sims.lead.hist))
+names(awp.sims.cast.hist) <- tolower(names(awp.sims.cast.hist))
+
+# combine the data frames to output to Automated Data Downloads
+tbl_cast_all <- rbind(awp.sims.cast.hist, tbl_cast)
+tbl_lag_all <- rbind(awp.sims.lagg.hist, tbl_lag)
+tbl_lead_all <- rbind(awp.sims.lead.hist, tbl_lead)
+
+write.csv(tbl_lag_all, "Z:/KCSubsite/LaggingDataMelt.csv", row.names = FALSE)
+write.csv(tbl_lead_all, "Z:/KCSubsite/LeadingDataMelt.csv", row.names = FALSE)
+write.csv(tbl_cast_all, "Z:/KCSubsite/CastingDataMelt.csv", row.names = FALSE)
+
+```
+
+```{r}
+
+
+awtp.2018.lead.plan  <- read.csv( "Z:/KCSubsite/awtp.2018.lead.plan.csv")
+
+#this data is from the SIMS load - THERE IS A BETTER PLACE TO PUT IT, but need to make sure the field names line up when
+# you go to bind the rows later...
+
+sqldf.awtp.lead.plan.ytd <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,'Plan' as plan_type
+    ,[line_year]
+    ,'YTD' as report_month
+    ,[process_type]
+		,([people_recognized]) as [people_recognized]
+		,([suggestions_submitted]) as [suggestions_submitted]
+		,([prob_a3_opened]) as [prob_a3_opened]
+		,([prob_a3_completed]) as [prob_a3_completed]
+		,([prob_a3_over_30]) as [prob_a3_over_30]
+		,([events]) as [events]
+    ,([five_s_audit]) as [five_s_audit]
+    ,([critical_equip]) as [critical_equip]
+    ,([crit_equip_in_tpm]) as [crit_equip_in_tpm]
+		,([proc_mgmt_review]) as [proc_mgmt_review]
+		,([recipe_audits]) as [recipe_audits]
+		,([recipe_misses]) as [recipe_misses]
+		,([dm_audit_score]) as [dm_audit_score]
+    ,([expected_pm_time]) as [expected_pm_time]
+    ,([total_pm_time]) as [total_pm_time]
+    ,([expected_pm_orders]) as [expected_pm_orders]
+    ,([total_pm_orders]) as [total_pm_orders]
+    ,([repair_count]) as [repair_count]
+    ,([mttr_avg_time]) as [mttr_avg_time]
+from [awtp.2018.lead.plan]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Plan'
+group by [process_type]
+
+")
+
+
+sqldf.awtp.lead.plan.mnth <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,'Plan' as plan_type
+    ,[line_year]
+    ,[report_month]
+    ,[process_type]
+		,([people_recognized]) as [people_recognized]
+		,([suggestions_submitted]) as [suggestions_submitted]
+		,([prob_a3_opened]) as [prob_a3_opened]
+		,([prob_a3_completed]) as [prob_a3_completed]
+		,([prob_a3_over_30]) as [prob_a3_over_30]
+		,([events]) as [events]
+    ,([five_s_audit]) as [five_s_audit]
+    ,([critical_equip]) as [critical_equip]
+    ,([crit_equip_in_tpm]) as [crit_equip_in_tpm]
+		,([proc_mgmt_review]) as [proc_mgmt_review]
+		,([recipe_audits]) as [recipe_audits]
+		,([recipe_misses]) as [recipe_misses]
+		,([dm_audit_score]) as [dm_audit_score]
+    ,([expected_pm_time]) as [expected_pm_time]
+    ,([total_pm_time]) as [total_pm_time]
+    ,([expected_pm_orders]) as [expected_pm_orders]
+    ,([total_pm_orders]) as [total_pm_orders]
+    ,([repair_count]) as [repair_count]
+    ,([mttr_avg_time]) as [mttr_avg_time]
+from [awtp.2018.lead.plan]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Plan'
+group by [process_type], [report_month]
+
+")
+
+
+# combine the two data frames for ytd & month plan at the AWTP-process level
+awtp.lead.awtp.plan.all <- rbind(sqldf.awtp.lead.plan.ytd, sqldf.awtp.lead.plan.mnth)
+
+names(awtp.2018.lead.plan) <- tolower(names(awtp.2018.lead.plan))
+
+awtp.lead.act <- tbl_lead_all
+
+awtp.2018.lead.all <- rbind.fill(awtp.lead.act, awtp.2018.lead.plan)
+
+awtp.2018.lead.all <- rbind.fill(awtp.2018.lead.all, awtp.lead.awtp.plan.all)
+
+awtp.2018.lagg.plan  <- read.csv( "Z:/KCSubsite/awtp.2018.lagg.plan.csv")
+
+# kacmak 03.7.2018
+# change Asset Utilization Avg calculation
+
+awtp.2018.lagg.plan$asset_utilization_avg <- awtp.2018.lagg.plan$full_prod_hrs / awtp.2018.lagg.plan$calendar_time
+
+sqldf.awtp.lagg.plan.ytd <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,'Plan' as plan_type
+    ,[line_year]
+    ,'YTD' as report_month
+    ,[process_type]
+		,([prod_units]) as [prod_units]
+		,([good_prod_units]) as [good_prod_units]
+		,([scrap_units]) as [scrap_units]
+		,([scrap_units_src]) as [scrap_units_src]
+		,([rework_units]) as [rework_units]
+		,([rework_units_src]) as [rework_units_src]
+    ,([total_time]) as [total_time]
+    ,([run_time]) as [run_time]
+    ,([eff_run_time]) as [eff_run_time]
+		,([full_prod_hrs]) as [full_prod_hrs]
+		,([calendar_time]) as [calendar_time]
+		,([process_lines]) as [process_lines]
+		,([process_lines_avg]) as [process_lines_avg]
+    ,([m_a_cycle_time_avg]) as [m_a_cycle_time_avg]
+    ,([scrap_pct_avg]) as [scrap_pct_avg]
+    ,([rework_pct_avg]) as [rework_pct_avg]
+    ,([quality_rate_avg]) as [quality_rate_avg]
+    ,([oa_avg]) as [oa_avg]
+    ,([perf_rate_avg]) as [perf_rate_avg]
+    ,([oee_avg]) as [oee_avg]
+    ,([asset_utilization_avg]) as [asset_utilization_avg]
+    ,([asset_utilization_weight]) as [asset_utilization_weight]
+from [awtp.2018.lagg.plan]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Plan'
+group by [process_type]
+
+")
+
+
+sqldf.awtp.lagg.plan.mnth <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,'Plan' as plan_type
+    ,[line_year]
+    ,[report_month]
+    ,[process_type]
+		,([prod_units]) as [prod_units]
+		,([good_prod_units]) as [good_prod_units]
+		,([scrap_units]) as [scrap_units]
+		,([scrap_units_src]) as [scrap_units_src]
+		,([rework_units]) as [rework_units]
+		,([rework_units_src]) as [rework_units_src]
+    ,([total_time]) as [total_time]
+    ,([run_time]) as [run_time]
+    ,([eff_run_time]) as [eff_run_time]
+		,([full_prod_hrs]) as [full_prod_hrs]
+		,([calendar_time]) as [calendar_time]
+		,([process_lines]) as [process_lines]
+		,([process_lines_avg]) as [process_lines_avg]
+    ,([m_a_cycle_time_avg]) as [m_a_cycle_time_avg]
+    ,([scrap_pct_avg]) as [scrap_pct_avg]
+    ,([rework_pct_avg]) as [rework_pct_avg]
+    ,([quality_rate_avg]) as [quality_rate_avg]
+    ,([oa_avg]) as [oa_avg]
+    ,([perf_rate_avg]) as [perf_rate_avg]
+    ,([oee_avg]) as [oee_avg]
+    ,([asset_utilization_avg]) as [asset_utilization_avg]
+    ,([asset_utilization_weight]) as [asset_utilization_weight]
+from [awtp.2018.lagg.plan]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Plan'
+group by [process_type], [report_month]
+
+")
+
+
+sqldf.awtp.lagg.act.mnth <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,[plan_type]
+    ,[line_year]
+    ,[report_month]
+    ,[process_type]
+		,([prod_units]) as [prod_units]
+		,([good_prod_units]) as [good_prod_units]
+		,([scrap_units]) as [scrap_units]
+		,([scrap_units_src]) as [scrap_units_src]
+		,([rework_units]) as [rework_units]
+		,([rework_units_src]) as [rework_units_src]
+    ,([total_time]) as [total_time]
+    ,([run_time]) as [run_time]
+    ,([eff_run_time]) as [eff_run_time]
+		,([full_prod_hrs]) as [full_prod_hrs]
+		,([calendar_time]) as [calendar_time]
+		,([process_lines]) as [process_lines]
+		,([process_lines_avg]) as [process_lines_avg]
+    ,([m_a_cycle_time_avg]) as [m_a_cycle_time_avg]
+    ,([scrap_pct_avg]) as [scrap_pct_avg]
+    ,([rework_pct_avg]) as [rework_pct_avg]
+    ,([quality_rate_avg]) as [quality_rate_avg]
+    ,([oa_avg]) as [oa_avg]
+    ,([perf_rate_avg]) as [perf_rate_avg]
+    ,([oee_avg]) as [oee_avg]
+    ,([asset_utilization_avg]) as [asset_utilization_avg]
+    ,([asset_utilization_weight]) as [asset_utilization_weight]
+from [tbl_lag]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Actual'
+group by [process_type], [report_month]
+
+")
+
+
+sqldf.awtp.lagg.act.ytd <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,[plan_type]
+    ,[line_year]
+    ,'YTD' as report_month
+    ,[process_type]
+		,([prod_units]) as [prod_units]
+		,([good_prod_units]) as [good_prod_units]
+		,([scrap_units]) as [scrap_units]
+		,([scrap_units_src]) as [scrap_units_src]
+		,([rework_units]) as [rework_units]
+		,([rework_units_src]) as [rework_units_src]
+    ,([total_time]) as [total_time]
+    ,([run_time]) as [run_time]
+    ,([eff_run_time]) as [eff_run_time]
+		,([full_prod_hrs]) as [full_prod_hrs]
+		,([calendar_time]) as [calendar_time]
+		,([process_lines]) as [process_lines]
+		,([process_lines_avg]) as [process_lines_avg]
+    ,([m_a_cycle_time_avg]) as [m_a_cycle_time_avg]
+    ,([scrap_pct_avg]) as [scrap_pct_avg]
+    ,([rework_pct_avg]) as [rework_pct_avg]
+    ,([quality_rate_avg]) as [quality_rate_avg]
+    ,([oa_avg]) as [oa_avg]
+    ,([perf_rate_avg]) as [perf_rate_avg]
+    ,([oee_avg]) as [oee_avg]
+    ,([asset_utilization_avg]) as [asset_utilization_avg]
+    ,([asset_utilization_weight]) as [asset_utilization_weight]
+from [tbl_lag]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Actual'
+group by [process_type]
+
+")
+
+
+awtp.lagg.awtp.plan.all <- rbind(sqldf.awtp.lagg.plan.ytd,  sqldf.awtp.lagg.plan.mnth)
+
+awtp.lagg.act <- sqldf("select * from [tbl_lag_all] where report_month like '%2018%'")
+
+awtp.2018.lagg.all <- rbind.fill(awtp.lagg.act, awtp.2018.lagg.plan)
+
+awtp.2018.lagg.all$scrap_pct_avg <- ((awtp.2018.lagg.all$scrap_units + awtp.2018.lagg.all$scrap_units_src) / (awtp.2018.lagg.all$scrap_units + awtp.2018.lagg.all$scrap_units_src + awtp.2018.lagg.all$good_prod_units))*100
+
+awtp.2018.lagg.all$rework_pct_avg <- ((awtp.2018.lagg.all$rework_units + awtp.2018.lagg.all$rework_units_src) / (awtp.2018.lagg.all$rework_units + awtp.2018.lagg.all$rework_units_src + awtp.2018.lagg.all$good_prod_units))*100
+
+awtp.2018.lagg.all <- rbind.fill(awtp.2018.lagg.all, awtp.lagg.awtp.plan.all)
+
+awtp.2018.cle.frg.lagg.plan <- read.csv("Z:/KCSubsite/awtp.2018.cle.frg.lagg.plan.csv")
+
+awtp.2018.lagg.all <- rbind.fill(awtp.2018.lagg.all, awtp.2018.cle.frg.lagg.plan)
+
+awtp.2018.cast.plan <- read.csv("Z:/KCSubsite/awtp.2018.cast.plan.csv")
+
+sqldf.awtp.cast.plan..ytd <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,'Plan' as plan_type
+    ,[line_year]
+    ,'YTD' as report_month
+    ,[process_type] as process_type
+    ,([prod_weight]) as prod_weight
+    ,([planned_scrap_weight]) as planned_scrap_weight
+    ,([unplanned_scrap_weight]) as unplanned_scrap_weight
+    ,([charge_weight_solid]) as charge_weight_solid
+    ,([charge_weight_rsi]) as charge_weight_rsi
+    ,([charge_weight_chip]) as charge_weight_chip
+    ,([dross_weight]) as dross_weight
+    ,([good_weight_shipped]) as good_weight_shipped
+    ,([dross_after_recovery]) as dross_after_recovery
+    ,([total_time]) as total_time
+    ,([run_time]) as run_time
+    ,([eff_run_time]) as eff_run_time
+    ,([full_prod_hours]) as full_prod_hours
+    ,([calendar_time]) as calendar_time
+    ,([process_lines]) as process_lines
+    ,([direct_lh_unit]) as direct_lh_unit
+    ,([total_charge_wt]) as total_charge_wt
+    ,([gas_gj]) as gas_gj
+    ,([electricity_gj]) as electricity_gj
+    ,([quality_rate_avg]) as quality_rate_avg
+    ,([oa_avg]) as oa_avg
+    ,([perf_rate_avg]) as perf_rate_avg
+    ,([oee_avg]) as oee_avg
+    ,([asset_utilization_avg]) as asset_utilization_avg
+    ,([asset_utilization_weight]) as asset_utilization_weight
+    ,([scrap_pct_avg]) as scrap_pct_avg
+    ,([recovery_pct_avg]) as recovery_pct_avg
+    ,([lh_mt_avg]) as lh_mt_avg
+    ,([gj_mt_avg]) as gj_mt_avg
+    ,([net_melt_loss_avg]) as net_melt_loss_avg
+from [awtp.2018.cast.plan]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Plan'
+group by [process_type]
+
+")
+
+
+sqldf.awtp.cast.plan..mnth <- sqldf("
+
+select 
+    'AWTP' as mfg_location
+    ,'Plan' as plan_type
+    ,[line_year]
+    ,[report_month]
+    ,[process_type]
+    ,([prod_weight]) as prod_weight
+    ,([planned_scrap_weight]) as planned_scrap_weight
+    ,([unplanned_scrap_weight]) as unplanned_scrap_weight
+    ,([charge_weight_solid]) as charge_weight_solid
+    ,([charge_weight_rsi]) as charge_weight_rsi
+    ,([charge_weight_chip]) as charge_weight_chip
+    ,([dross_weight]) as dross_weight
+    ,([good_weight_shipped]) as good_weight_shipped
+    ,([dross_after_recovery]) as dross_after_recovery
+    ,([total_time]) as total_time
+    ,([run_time]) as run_time
+    ,([eff_run_time]) as eff_run_time
+    ,([full_prod_hours]) as full_prod_hours
+    ,([calendar_time]) as calendar_time
+    ,([process_lines]) as process_lines
+    ,([direct_lh_unit]) as direct_lh_unit
+    ,([total_charge_wt]) as total_charge_wt
+    ,([gas_gj]) as gas_gj
+    ,([electricity_gj]) as electricity_gj
+    ,([quality_rate_avg]) as quality_rate_avg
+    ,([oa_avg]) as oa_avg
+    ,([perf_rate_avg]) as perf_rate_avg
+    ,([oee_avg]) as oee_avg
+    ,([asset_utilization_avg]) as asset_utilization_avg
+    ,([asset_utilization_weight]) as asset_utilization_weight
+    ,([scrap_pct_avg]) as scrap_pct_avg
+    ,([recovery_pct_avg]) as recovery_pct_avg
+    ,([lh_mt_avg]) as lh_mt_avg
+    ,([gj_mt_avg]) as gj_mt_avg
+    ,([net_melt_loss_avg]) as net_melt_loss_avg
+from [awtp.2018.cast.plan]
+where [line_year] = 2018
+and report_month in ('2018 YTD', '2018-01', '2018-02', '2018-03', '2018-04', '2018-05', '2018-06', '2018-07', '2018-08', '2018-09', '2018-10', '2018-11', '2018-12')
+and Plan_Type = 'Plan'
+group by [process_type], [report_month]
+
+")
+
+
+# combine the two data frames for ytd & month plan at the AWTP-process level
+awtp.lagg.awtp.cast.all <- rbind(sqldf.awtp.cast.plan..ytd, sqldf.awtp.cast.plan..mnth)
+
+names(awtp.2018.cast.plan) <- tolower(names(awtp.2018.cast.plan))
+
+# kacmak 03.7.2018 
+# change Asset Utilization Avg calculation
+
+awtp.2018.cast.plan$asset_utilization_avg <- awtp.2018.cast.plan$full_prod_hrs / awtp.2018.cast.plan$calendar_time
+
+awtp.cast.act <- tbl_cast_all
+
+awtp.2018.cast.all <- rbind.fill(awtp.cast.act, awtp.2018.cast.plan)
+
+awtp.2018.cast.all <- rbind(awtp.2018.cast.all, awtp.lagg.awtp.cast.all)
+
+awtp.2018.lagg.all$mfg_location[awtp.2018.lagg.all$mfg_location == "8002" & awtp.2018.lagg.all$process_type == "Forging"] <- "CLE 8002"
+awtp.2018.lagg.all$mfg_location[awtp.2018.lagg.all$mfg_location == "8003" & awtp.2018.lagg.all$process_type == "Forging"] <- "CLE 8003"
+awtp.2018.lagg.all$mfg_location[awtp.2018.lagg.all$mfg_location == "XPlt" & awtp.2018.lagg.all$process_type == "Forging"] <- "CLE XPlt"
+awtp.2018.lagg.all$mfg_location[awtp.2018.lagg.all$mfg_location == "YPlt" & awtp.2018.lagg.all$process_type == "Forging"] <- "CLE YPlt"
+
+awtp.2018.lead.all$mfg_location[awtp.2018.lead.all$mfg_location == "8002" & awtp.2018.lead.all$process_type == "Forging"] <- "CLE 8002"
+awtp.2018.lead.all$mfg_location[awtp.2018.lead.all$mfg_location == "8003" & awtp.2018.lead.all$process_type == "Forging"] <- "CLE 8003"
+awtp.2018.lead.all$mfg_location[awtp.2018.lead.all$mfg_location == "XPlt" & awtp.2018.lead.all$process_type == "Forging"] <- "CLE XPlt"
+awtp.2018.lead.all$mfg_location[awtp.2018.lead.all$mfg_location == "YPlt" & awtp.2018.lead.all$process_type == "Forging"] <- "CLE YPlt"
+
+
+# GET RID OF SHIT WE DONT NEED
+
+awtp.2018.lagg.all <- sqldf("select * from [awtp.2018.lagg.all]
+           where mfg_location in ('AWPJ', 'AWTP', 'AWPE', 'AWPS', 'CLE 8002', 'CLE 8003', 'CLE XPlt', 'CLE YPlt', 'AWPM', 'BCC', 'MCC', 'BRB')")
+
+
+ cast.melt <- melt(awtp.2018.cast.all, id.vars = c("mfg_location", "plan_type", "process_type", "report_month"))
+# 
+# write.csv(cast.melt, "Z:/KCSubsite/cast.melt.csv", row.names = FALSE)
+# 
+ lagg.melt <- melt(awtp.2018.lagg.all, id.vars = c("mfg_location", "plan_type", "process_type", "report_month"))
+# 
+# write.csv(lagg.melt, "Z:/KCSubsite/lagg.melt.csv", row.names = FALSE)
+# 
+ lead.melt <- melt(awtp.2018.lead.all, id.vars = c("mfg_location", "plan_type", "process_type", "report_month"))
+# 
+# write.csv(lead.melt, "Z:/KCSubsite/lead.melt.csv", row.names = FALSE)
+
+
+
+ lagg.melt.high <- sqldf("select * from [lagg.melt] where variable in ('mfg_location'
+                                            , 'plan_type'
+                                            , 'process_type'
+                                            , 'asset_utilization_avg'
+                                            , 'calendar_time'
+                                            , 'eff_run_time'
+                                            , 'full_prod_hours'
+                                            , 'good_prod_units'
+                                            , 'oa_avg'
+                                            , 'oee_avg'
+                                            , 'perf_rate_avg'
+                                            , 'good_prod_units'
+                                            , 'quality_rate_avg'
+                                            , 'run_time'
+                                            , 'total_time'
+                                            )")
+ 
+ lagg.melt.low <- sqldf("select * from [lagg.melt] where variable in (  'mfg_location'
+                                            , 'plan_type'
+                                            , 'process_type'
+                                             ,'scrap_pct_avg'
+                                             ,'scrap_units'
+                                             ,'scrap_units_source'
+                                             ,'rework_pct_avg'
+                                             ,'rework_units'
+                                             ,'rework_units_source'
+                                             ,'m_a_cycle_time_avg')")
+
+write.csv(lagg.melt.high, "Z:/KCSubsite/lagg.melt.high.csv", row.names = FALSE)
+
+write.csv(lagg.melt.low, "Z:/KCSubsite/lagg.melt.low.csv", row.names = FALSE)
+
+
+```
+
